@@ -7,6 +7,8 @@ from uuid import uuid4
 from redis.exceptions import RedisError
 
 from src.models.db import transaction
+from src.models.migrate import migrate_with_retry
+from src.services import reports
 from src.services.audit import record
 from src.services.decomposition import AnalysisError, analyze
 from src.services.exports import write_snapshot
@@ -27,6 +29,19 @@ def claim():
             job['token'] = uuid4().hex
             cursor.execute("UPDATE analysis_runs SET status='running', claim_token=%s, claimed_at=UTC_TIMESTAMP(6) "
                            'WHERE id=%s', (job['token'], job['id']))
+    return job
+
+
+def claim_report():
+    with transaction() as cursor:
+        cursor.execute("SELECT id, plan_id FROM report_jobs WHERE status='queued' "
+                       "OR (status='running' AND claimed_at < UTC_TIMESTAMP(6) - INTERVAL 30 SECOND) "
+                       'ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED')
+        job = cursor.fetchone()
+        if job:
+            job['token'] = uuid4().hex
+            cursor.execute("UPDATE report_jobs SET status='running', claim_token=%s, claimed_at=UTC_TIMESTAMP(6), "
+                           'attempts=attempts+1 WHERE id=%s', (job['token'], job['id']))
     return job
 
 
@@ -56,10 +71,15 @@ def process(job):
 
 def main():
     logging.basicConfig(level=logging.INFO)
+    migrate_with_retry()
     while True:
         try:
-            job = claim()
+            report_job = claim_report()
             heartbeat.touch()
+            if report_job:
+                reports.compute_job(report_job)
+                continue
+            job = claim()
             if job:
                 process(job)
                 continue

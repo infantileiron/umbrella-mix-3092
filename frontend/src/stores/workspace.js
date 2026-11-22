@@ -7,6 +7,7 @@ export const state = {
   ledger: { page: 1, branch: '' },
   planId: null,
   notice: '',
+  alert: '',
 };
 
 export function setSession(session) {
@@ -18,5 +19,6 @@ export function setSession(session) {
     state.ledger = { page: 1, branch: '' };
     state.planId = null;
     state.notice = '';
+    state.alert = '';
   }
 }

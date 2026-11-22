@@ -28,6 +28,7 @@ def save_plan(key, payload, actor, base=None):
                            'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
                            (key, version, *fields.values(), actor))
             plan_id = cursor.lastrowid
+            cursor.execute('INSERT INTO report_slots (plan_id) VALUES (%s)', (plan_id,))
             record(cursor, actor, 'plan.create' if base is None else 'plan.revise', f'{key}.v{version}')
     except IntegrityError as exc:
         if exc.args[0] != 1062:

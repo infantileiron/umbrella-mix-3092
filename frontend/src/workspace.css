@@ -79,3 +79,6 @@ tbody tr:hover { background: var(--paper); }
   th, td { padding-inline: 10px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+.status.done, .status.current { color: var(--olive); background: var(--olive-soft); }
+.status.recomputing, .status.awaiting_publish, .status.outdated, .status.pending { color: var(--rust-dark); background: var(--rust-soft); }
+.status.vacant, .status.stale, .status.idle { color: var(--muted); background: var(--raw); }

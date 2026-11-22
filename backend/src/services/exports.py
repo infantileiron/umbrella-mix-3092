@@ -49,6 +49,16 @@ def csv_result(run):
                 'min_samples', 'coefficient_ref'):
         rows.append(('plan', key, '', '', '', '', plan[key]))
     rows.append(('run', 'snapshot_sha256', '', '', '', '', run['snapshot_sha']))
+    delta = run.get('delta')
+    if delta:
+        rows.append(('delta', 'entered', '', '', '', '', ';'.join(delta['entered']) or '\u2014'))
+        rows.append(('delta', 'exited', '', '', '', '', ';'.join(delta['exited']) or '\u2014'))
+        for item in delta['modified']:
+            changes = '; '.join(f"{key}: {old} -> {new}" for key, (old, new) in item['changes'].items())
+            rows.append(('delta', 'modified', '', '', '', '', f"{item['code']} r{item['from_revision']}->r{item['to_revision']} {changes}"))
+        for key in ('gap', 'composition', 'coefficient'):
+            metric = delta['metrics'][key]
+            rows.append(('delta', f'{key}.change', '', '', metric['before'], metric['after'], metric['change']))
     if run['draft']:
         for key in ('status', 'action_text', 'edited_by'):
             rows.append(('review', key, '', '', '', '', run['draft'][key]))

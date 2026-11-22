@@ -29,6 +29,19 @@ class DraftStatus(StrEnum):
     PUBLISHED = 'published'
 
 
+class CandidateStatus(StrEnum):
+    PENDING = 'pending'
+    PUBLISHED = 'published'
+    STALE = 'stale'
+
+
+class JobStatus(StrEnum):
+    QUEUED = 'queued'
+    RUNNING = 'running'
+    DONE = 'done'
+    FAILED = 'failed'
+
+
 BRANCH_LABEL = {Branch.NORTH: '北埠修伞铺', Branch.SOUTH: '南桥修伞铺'}
 FEATURES = ('ribs', 'fabric', 'mechanism')
 TERMS = ('intercept', *FEATURES)

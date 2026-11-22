@@ -16,4 +16,12 @@ export const api = {
   publish: id => request(`/runs/${id}/publish`, { method: 'POST' }),
   exportResult: id => download(`/runs/${id}/result.csv`, `umbrella-${id}.csv`),
   exportSnapshot: id => download(`/runs/${id}/snapshot.json`, `umbrella-${id}-snapshot.json`),
+  reports: () => request('/reports'),
+  report: planId => request(`/reports/${planId}`),
+  recompute: planId => request(`/reports/${planId}/recompute`, { method: 'POST' }),
+  retryJob: id => request(`/reports/jobs/${id}/retry`, { method: 'POST' }),
+  candidate: id => request(`/reports/candidates/${id}`),
+  publishCandidate: id => request(`/reports/candidates/${id}/publish`, { method: 'POST' }),
+  exportCandidate: id => download(`/reports/candidates/${id}/result.csv`, `umbrella-weekly-${id}.csv`),
+  candidateSnapshot: id => download(`/reports/candidates/${id}/snapshot.json`, `umbrella-weekly-${id}-snapshot.json`),
 };

@@ -3,6 +3,7 @@ import { empty } from './components/common/panel.js';
 import { shell } from './components/shell.js';
 import { login } from './pages/login.js';
 import { plans } from './pages/plans.js';
+import { reports } from './pages/reports.js';
 import { results } from './pages/results.js';
 import { review } from './pages/review.js';
 import { runs } from './pages/runs.js';
@@ -12,7 +13,7 @@ import { setSession, state } from './stores/workspace.js';
 import { esc } from './utils/html.js';
 
 const root = document.querySelector('#app');
-const pages = { tickets, plans, runs, results, review };
+const pages = { tickets, plans, runs, results, reports, review };
 let epoch = 0;
 
 function signOut() {

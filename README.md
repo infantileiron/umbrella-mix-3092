@@ -38,6 +38,27 @@
 
 方法出处为 Ben Jann, *The Blinder–Oaxaca Decomposition for Linear Regression Models*, The Stata Journal 8(4), 2008, doi:10.1177/1536867X0800800401。
 
+## 周报现值与重算交接
+
+每个方案版本对应一个周报槽位（`report_slots`），「周报现值」页（`#/reports`）就是两点周会页面。工票补录或修订后，系统按原方案版本重算受影响的周报，不再手工合并 Excel。
+
+- **修订流水与水位**：每次补录或修订在写入工票的同一事务里登记 `ticket_changes`（含改前改后的网点与日期），并把新旧归属窗口覆盖到的槽位 `sample_seq` 推进到该流水号。已有现值或候选稿的槽位自动生成重算任务（`report_jobs`，MySQL 队列为事实来源，Redis 只负责唤醒）；从未开算的槽位不自动重算，分析员可在周报页手动「立即重算」发起首算。
+- **候选稿与交代**：worker 重算后产出候选稿（`report_candidates`），封存方案版本、按自然键排序的工票与每条修订号（快照原始字节的 SHA-256 可对照）。候选稿对照上一版现值给出交代：哪些票进入、退出或改过（逐字段旧值 → 新值），以及实际差、构成差、系数差各变了多少。
+- **现值交接**：业务方在周报页把候选稿「发布为现值」。发布在槽位锁内校验候选稿水位等于槽位水位，随后移交现值指针。跨周移票时，若另一周的现值快照仍含有已不属于其窗口的票，同一事务内把该槽位现值腾空（`report.vacate` 审计），保证同一票不会在两周现值里算两遍。被腾空的槽位显示「现值待交接」，旧稿继续可查，待其新候选稿发布即补位。
+- **一周失败不影响周会**：重算失败（样本不足、不满秩等）只把该周任务标为待补正，另一周的候选稿照常发布；周会页面始终展示最近现值或旧稿、候选稿与失败原因。
+- **过期稿不能发布**：候选稿水位落后于槽位水位即过期（修订事务会同步标记，发布前再校验一次）。并发修票改变样本后，已算好的过期稿发布返回 409，只能用最新候选稿。
+- **失败可重试且不重样**：待补正任务可重试，重试复用同一任务行；候选稿以 `(方案版本, 样本水位)` 为唯一键，重试或崩溃重领都向上合并（upsert），同一批修订不会重复生成候选稿。计算期间样本又变化时，候选稿出生即标记过期，并自动补一个跟进任务收敛到最新样本。
+- **旧稿一直可查**：候选稿永不删除。观察员可阅全部已发布稿（现值与旧稿）及其导出；候选待发布稿与任务细节仅分析员、业务方可见。
+
+| 端点 | 角色 | 说明 |
+|---|---|---|
+| `GET /reports`、`GET /reports/{plan_id}` | 全角色 | 槽位与现值、候选稿（观察员仅已发布）、任务与状态 |
+| `POST /reports/{plan_id}/recompute` | 分析员 | 手动发起重算（已有排队/运行中任务时幂等返回） |
+| `POST /reports/jobs/{job_id}/retry` | 分析员 | 重试待补正任务，复用同一任务行 |
+| `POST /reports/candidates/{id}/publish` | 业务方 | 发布候选稿为现值，过期或重复发布返回 409 |
+| `GET /reports/candidates/{id}` | 全角色 | 候选稿详情（观察员仅已发布） |
+| `GET /reports/candidates/{id}/result.csv`、`snapshot.json` | 全角色 | 候选稿导出，CSV 附变化说明（delta 段） |
+
 ## 启动与开发
 
 ```bash
@@ -53,11 +74,12 @@ docker compose exec -T backend python -m scripts.seed_demo
 | 前端 | 原生 HTML、CSS、JavaScript ES modules，`frontend/src`。Nginx 代理 `/api/`，支持 SPA 路由 |
 | API | Python 3.11、FastAPI、PyMySQL、JWT，`backend/src` |
 | 计算 | NumPy SVD 最小二乘，`backend/src/services/decomposition.py`，由 `src.worker` 调度 |
-| 持久化 | MySQL 8.0 工票、方案、队列、草案与审计，`backend/migrations/001_initial.sql` |
+| 周报重算 | 修订流水、槽位水位、候选稿与现值交接，`backend/src/services/reports.py` |
+| 持久化 | MySQL 8.0 工票、方案、队列、草案、周报与审计，`backend/migrations/001_initial.sql`、`002_reports.sql` |
 | 唤醒和导出 | Redis 7 唤醒，MySQL 任务队列为事实来源。worker 用共享卷原子落盘快照 |
 | 演示数据 | `backend/scripts/seed_demo.py` 和 `backend/scripts/seed_cases.py` |
 
-本地开发可用 `python3.11 -m venv .venv` 后在 `backend/` 安装 `requirements.txt`，将 `DB_HOST`、`DB_PORT`、`REDIS_URL` 设为开发 MySQL 和 Redis，先执行初始 SQL，再执行 `python -m scripts.seed_demo`、`uvicorn src.main:app --reload --port 8000` 和 `python -m src.worker`。前端需要支持 `/api/` 代理的静态服务器。批次验收统一从批次目录执行 `bash scripts/verify-project.sh gb-5210`。
+本地开发可用 `python3.11 -m venv .venv` 后在 `backend/` 安装 `requirements.txt`，将 `DB_HOST`、`DB_PORT`、`REDIS_URL` 设为开发 MySQL 和 Redis，先执行初始 SQL，再执行 `python -m scripts.seed_demo`、`uvicorn src.main:app --reload --port 8000` 和 `python -m src.worker`。后端与 worker 启动时会自动补齐 `backend/migrations` 中未执行的迁移（记录在 `schema_migrations`），已有数据卷无需手工执行 `002_reports.sql`。前端需要支持 `/api/` 代理的静态服务器。批次验收统一从批次目录执行 `bash scripts/verify-project.sh gb-5210`。
 
 `.env` 管理 `COMPOSE_PROJECT_NAME`、三端口、`NETWORK_SUBNET`、四项 MySQL 配置、`JWT_SECRET` 和 `SEED_DEMO`。默认数据库/Redis 主机名为 `db`/`redis`，也可用 `DB_HOST`、`DB_PORT`、`REDIS_URL` 覆盖本地开发连接。`EXPORT_DIR` 默认为 `/app/artifacts`，API 与 worker 共用。完整 `.env` 由 `.env.example` 生成。
 
